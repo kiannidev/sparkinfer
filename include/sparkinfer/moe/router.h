@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 #include <vector>
+#include <memory>
 
 namespace sparkinfer { namespace moe {
 
