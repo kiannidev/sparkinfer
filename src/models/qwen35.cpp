@@ -56,6 +56,9 @@ struct Qwen35Model::Impl {
     // GGUF fused-expert decode scratch (allocated by load_gguf)
     float *mf_logits = nullptr, *mf_weights = nullptr, *mf_h = nullptr, *mf_out = nullptr;
     int   *mf_ids = nullptr, *mf_counts = nullptr;
+    // flash-decoding (KV-split) attention partials
+    int n_splits = 16;
+    float *fa_m = nullptr, *fa_l = nullptr, *fa_acc = nullptr;
 
     template <class T> T* alloc(size_t n) { void* p=nullptr; cu(cudaMalloc(&p, n*sizeof(T)), "malloc"); return (T*)p; }
 };
@@ -90,6 +93,7 @@ Qwen35Model::~Qwen35Model() {
     cudaFree(p_->d_seqlen); cudaFree(p_->d_writepos); cudaFree(p_->d_shared_ids); cudaFree(p_->d_shared_w);
     cudaFree(p_->mf_logits); cudaFree(p_->mf_weights); cudaFree(p_->mf_h); cudaFree(p_->mf_out);
     cudaFree(p_->mf_ids); cudaFree(p_->mf_counts);
+    cudaFree(p_->fa_m); cudaFree(p_->fa_l); cudaFree(p_->fa_acc);
     if (p_->graph_ready) { cudaGraphExecDestroy(p_->cu_exec); cudaGraphDestroy(p_->cu_graph); }
     cudaStreamDestroy(p_->stream);
     delete p_;
@@ -153,9 +157,10 @@ int Qwen35Model::forward_token(int token_id, int position) {
 #ifdef SPARKINFER_SKIP_GQA
         cudaMemsetAsync(s.attn, 0, (size_t)s.qdim * sizeof(bf16), st);  // ablation: isolate gqa kernel
 #else
-        kernels::launch_flash_decode_gqa8(s.q, kpool, vpool, btable, s.d_seqlen, s.attn,
-                                          1, c.n_kv_heads, c.head_dim, s.kv->block_size(),
-                                          s.kv->max_blocks_per_seq(), 1.f / sqrtf((float)c.head_dim), st);
+        kernels::launch_flash_decode_split(s.q, kpool, vpool, btable, s.d_seqlen, s.attn,
+                                           s.fa_m, s.fa_l, s.fa_acc, 1, c.n_q_heads, c.n_kv_heads, c.head_dim,
+                                           s.kv->block_size(), s.kv->max_blocks_per_seq(), s.n_splits,
+                                           1.f / sqrtf((float)c.head_dim), st);
 #endif
 
         if (s.gguf) kernels::launch_gemv(s.attn, w.wo, s.ao, H, s.qdim, st);
@@ -352,7 +357,12 @@ bool Qwen35Model::load_gguf(const std::string& path) {
     cudaMalloc((void**)&s.mf_counts,  (size_t)c.n_experts * sizeof(int));
     cudaMalloc((void**)&s.mf_h,       (size_t)c.top_k * c.moe_ffn * sizeof(float));
     cudaMalloc((void**)&s.mf_out,     (size_t)c.hidden * sizeof(float));
-    return s.mf_out != nullptr;
+    // flash-decoding attention partials (num_seqs=1)
+    const size_t fa_n = (size_t)c.n_q_heads * s.n_splits;
+    cudaMalloc((void**)&s.fa_m,   fa_n * sizeof(float));
+    cudaMalloc((void**)&s.fa_l,   fa_n * sizeof(float));
+    cudaMalloc((void**)&s.fa_acc, fa_n * c.head_dim * sizeof(float));
+    return s.mf_out != nullptr && s.fa_acc != nullptr;
 }
 
 } // namespace sparkinfer
