@@ -31,7 +31,8 @@ RTX Spark is NVIDIA's Blackwell-based AI superchip: 20-core ARM CPU + Blackwell 
 | Device | Memory | Bandwidth | Arch | Status |
 |---|---|---|---|---|
 | **RTX Spark** (GB10) | 128 GB unified | ~273 GB/s | sm_121 | **Primary** |
-| RTX 5090 (GB202) | 32 GB GDDR7 | 1.79 TB/s | sm_120 | Secondary |
+| RTX PRO 6000 (GB202) | 96 GB GDDR7 ECC | ~1.79 TB/s | sm_120 | Supported |
+| RTX 5090 (GB202) | 32 GB GDDR7 | 1.79 TB/s | sm_120 | Supported |
 | Jetson Thor | unified | — | sm_121 | Planned |
 
 > Consumer Blackwell is `sm_120` (RTX 5090) / `sm_121` (RTX Spark, Jetson Thor) —
