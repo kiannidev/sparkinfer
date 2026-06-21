@@ -22,4 +22,15 @@ void launch_dequant_int4_block(const unsigned char* packed, const void* scales_b
                                void* out_bf16, int n, int block,
                                cudaStream_t stream = nullptr);
 
+// GGUF block dequant -> bf16 (natural ggml order). ggml_type: 0=F32,1=F16,
+// 8=Q8_0,12=Q4_K,14=Q6_K. Q4_K/Q6_K validated byte-exact vs the gguf reference.
+void launch_gguf_dequant(int ggml_type, const void* src, void* dst_bf16, long n_values,
+                         cudaStream_t stream = nullptr);
+
+// bf16 transposes used to relayout GGUF [out,in] -> our [in,out].
+void launch_transpose_bf16(const void* src, void* dst, int rows, int cols,
+                           cudaStream_t stream = nullptr);          // [rows,cols]->[cols,rows]
+void launch_transpose3d_bf16(const void* src, void* dst, int E, int A, int B,
+                             cudaStream_t stream = nullptr);        // [E,A,B]->[E,B,A]
+
 }} // namespace sparkinfer::kernels
