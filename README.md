@@ -1,6 +1,6 @@
 # sparkinfer-kernels
 
-Native C++/CUDA and CuTe DSL kernel library for edge MoE inference on **NVIDIA RTX Spark**, RTX 5090, and Jetson Thor.
+Native C++/CUDA and CuTe DSL kernel library for edge MoE inference on **NVIDIA RTX Spark**, RTX PRO 6000, RTX 5090, and Jetson Thor.
 
 Part of [gittensor-ai-lab](https://github.com/orgs/gittensor-ai-lab) — SN74.
 
@@ -15,7 +15,7 @@ Part of [gittensor-ai-lab](https://github.com/orgs/gittensor-ai-lab) — SN74.
 | Persistent kernel architecture | no | yes |
 | Epilogue visitor composition | no | yes (CuTe) |
 | Register layout control | no | full |
-| sm_100 (RTX Spark) maturity | maturing | production-ready |
+| sm_120 / sm_121 (consumer Blackwell) maturity | maturing | production-ready |
 | Blackwell smem (228 KB/CTA) | partial | full |
 | Performance ceiling | ~80% of peak | ~95%+ of peak |
 
