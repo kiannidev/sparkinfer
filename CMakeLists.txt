@@ -11,6 +11,8 @@ option(BUILD_EXAMPLES "Build example programs"          ON)
 
 find_package(CUDAToolkit REQUIRED)
 
+enable_testing()   # so `ctest` at the build root discovers the subdirs' add_test() registrations
+
 # Superbuild. moe/ and runtime/ guard their sibling add_subdirectory(../kernels)
 # with if(NOT TARGET ...), so adding kernels first here makes them reuse the
 # already-defined targets instead of re-adding. Dependency order: kernels -> moe -> runtime.
