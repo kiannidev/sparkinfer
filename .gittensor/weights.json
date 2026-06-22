@@ -12,5 +12,5 @@
     "moe/**":     "frontier-delta verified speedup (XL/L/M/S/XS)",
     "bench/**":   "code quality (AST) — measurement infra, not speed-scored"
   },
-  "notes": "Intra-repo split for the sparkinfer monorepo. Weights are maturity-adaptive: as the runtime nears the hardware ceiling and 10x wins vanish, improvement is scored vs remaining headroom (roofline %) and weights rebalance toward the smaller buckets. 'agent' and the private 'kernel-wiki' are separate repos. Full reward model: https://github.com/gittensor-ai-lab"
+  "notes": "Intra-repo split for the sparkinfer monorepo. Weights are maturity-adaptive: as the runtime nears the hardware ceiling and 10x wins vanish, improvement is scored vs remaining headroom (roofline %) and weights rebalance toward the smaller buckets. 'agent' is a separate repo. Full reward model: https://github.com/gittensor-ai-lab"
 }
