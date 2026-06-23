@@ -15,6 +15,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 GGUF=""; TOKENS=128; COMPARE=0
 while [ $# -gt 0 ]; do case "$1" in
   --download) GGUF="$MODELS_DIR/$MODEL_FILE" ;;
+  --model)    shift; MODEL_PRESET="$1"; apply_model_preset ;;
   --tokens)   shift; TOKENS="$1" ;;
   --compare)  COMPARE=1 ;;
   -h|--help)  sed -n '2,9p' "$0"; exit 0 ;;
@@ -27,12 +28,12 @@ resolve_runner "$ARCH"     # prebuilt binaries if available, else build from sou
 [ "$GGUF" = "$MODELS_DIR/$MODEL_FILE" ] && ensure_model
 [ -f "$GGUF" ] || { echo "!! GGUF not found: $GGUF  (pass a path or use --download)"; exit 1; }
 
-echo; echo "=== sparkinfer — decode (n=$TOKENS, bs=1) ==="
-out="$(si_run qwen3_gguf_bench "$GGUF" "$TOKENS" 2>&1)" || true
+echo; echo "=== sparkinfer — decode ($BENCH_TOOL, n=$TOKENS, bs=1, preset=$MODEL_PRESET) ==="
+out="$(si_run "$BENCH_TOOL" "$GGUF" "$TOKENS" 2>&1)" || true
 echo "$out"
 if ! echo "$out" | grep -q "decode tg"; then   # prebuilt incompatible (arch/driver/glibc) -> rebuild
   fallback_build "$ARCH"
-  si_run qwen3_gguf_bench "$GGUF" "$TOKENS"
+  si_run "$BENCH_TOOL" "$GGUF" "$TOKENS"
 fi
 
 if [ "$COMPARE" = 1 ]; then

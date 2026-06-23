@@ -7,7 +7,7 @@ quant:   q4_k_m
 
 hardware:
   name: RTX Spark
-  arch: sm_100
+  arch: sm_121
   unified_memory_gb: 128
   bandwidth_gbps: 273     # LPDDR5X — 6-7× slower than RTX 5090 GDDR7
   cuda_cores: 6144

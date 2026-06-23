@@ -12,6 +12,7 @@ source "$HERE/_common.sh"
 GGUF=""; TEXT="$HERE/eval_text.txt"
 while [ $# -gt 0 ]; do case "$1" in
   --download) GGUF="$MODELS_DIR/$MODEL_FILE" ;;
+  --model)    shift; MODEL_PRESET="$1"; apply_model_preset ;;
   --text)     shift; TEXT="$1" ;;
   -h|--help)  sed -n '2,8p' "$0"; exit 0 ;;
   *)          GGUF="$1" ;;
@@ -28,11 +29,11 @@ ensure_llamacpp "$ARCH"
 IDS="$(python3 -c "from tokenizers import Tokenizer; print(' '.join(map(str, Tokenizer.from_file('$MODELS_DIR/tokenizer.json').encode(open('$TEXT').read().strip()).ids)))")"
 echo ">> eval tokens: $(echo "$IDS" | wc -w)"
 
-echo ">> sparkinfer teacher-forced score ..."
-si_run qwen3_gguf_score "$GGUF" 20 $IDS > /tmp/spark_score.txt 2>/dev/null || true
+echo ">> sparkinfer teacher-forced score ($SCORE_TOOL) ..."
+si_run "$SCORE_TOOL" "$GGUF" 20 $IDS > /tmp/spark_score.txt 2>/dev/null || true
 if ! grep -q "^PPL" /tmp/spark_score.txt; then   # prebuilt incompatible -> rebuild
   fallback_build "$ARCH"
-  si_run qwen3_gguf_score "$GGUF" 20 $IDS > /tmp/spark_score.txt 2>/dev/null
+  si_run "$SCORE_TOOL" "$GGUF" 20 $IDS > /tmp/spark_score.txt 2>/dev/null
 fi
 
 echo ">> starting llama.cpp server (reference) ..."

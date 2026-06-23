@@ -18,11 +18,16 @@ bench/scripts/bench.sh --download --compare
 
 # 3) Accuracy gate vs llama.cpp (token-match / KL / perplexity)
 bench/scripts/accuracy.sh --download
+
+# 4) Basket gate — Qwen today; Gemma skipped until runtime wiring lands
+bench/scripts/accuracy_basket.sh --download
 ```
 
 Use your own model instead of `--download`:
 ```bash
 bench/scripts/bench.sh /path/to/model.gguf --tokens 256 --compare
+bench/scripts/bench.sh --model gemma4 --download   # when Gemma runtime lands
+bench/scripts/accuracy.sh --model qwen --download
 ```
 
 ## Prebuilt binaries (no toolkit needed)
@@ -68,10 +73,11 @@ build/runtime/qwen3_gguf_score model.gguf 20 <token-ids...>   # compare argmax +
 | var | default | purpose |
 |---|---|---|
 | `ARCH` | auto (`compute_cap`) | CUDA arch, e.g. `121` for RTX Spark |
+| `MODEL_PRESET` | `qwen` | basket model: `qwen` or `gemma4` (also `--model` flag) |
 | `MODELS_DIR` | `./models` | where the GGUF + tokenizer live |
-| `MODEL_REPO` / `MODEL_FILE` | Qwen3-30B-A3B GGUF | model to fetch |
+| `MODEL_REPO` / `MODEL_FILE` | preset-specific | model to fetch (override per preset) |
 | `LLAMACPP_DIR` | `./.llamacpp` | reuse an existing llama.cpp checkout/build |
 | `NO_PREBUILT` | `0` | set `1` to skip prebuilt binaries and build from source |
 
-Files: `bench.sh`, `accuracy.sh`, `accuracy_compare.py`, `eval_text.txt`, `_common.sh`.
+Files: `bench.sh`, `accuracy.sh`, `accuracy_basket.sh`, `accuracy_compare.py`, `eval_text.txt`, `_common.sh`.
 Results from reference runs live in [`../results/`](../results).

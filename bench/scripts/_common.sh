@@ -5,10 +5,39 @@
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # repo root (bench/scripts -> root)
 MODELS_DIR="${MODELS_DIR:-$ROOT/models}"
-MODEL_REPO="${MODEL_REPO:-Qwen/Qwen3-30B-A3B-GGUF}"
-MODEL_FILE="${MODEL_FILE:-Qwen3-30B-A3B-Q4_K_M.gguf}"
-TOK_REPO="${TOK_REPO:-Qwen/Qwen3-30B-A3B}"
+MODEL_PRESET="${MODEL_PRESET:-qwen}"   # qwen | gemma4 — see apply_model_preset
+MODEL_REPO="${MODEL_REPO:-}"
+MODEL_FILE="${MODEL_FILE:-}"
+TOK_REPO="${TOK_REPO:-}"
+SCORE_TOOL="${SCORE_TOOL:-qwen3_gguf_score}"
+BENCH_TOOL="${BENCH_TOOL:-qwen3_gguf_bench}"
 LLAMACPP_DIR="${LLAMACPP_DIR:-$ROOT/.llamacpp}"   # override to reuse an existing checkout
+
+# Basket model presets (Qwen3-MoE + Gemma 4). Env vars above override these defaults.
+apply_model_preset() {
+  case "${MODEL_PRESET}" in
+    qwen)
+      MODEL_REPO="${MODEL_REPO:-Qwen/Qwen3-30B-A3B-GGUF}"
+      MODEL_FILE="${MODEL_FILE:-Qwen3-30B-A3B-Q4_K_M.gguf}"
+      TOK_REPO="${TOK_REPO:-Qwen/Qwen3-30B-A3B}"
+      SCORE_TOOL="qwen3_gguf_score"
+      BENCH_TOOL="qwen3_gguf_bench"
+      ;;
+    gemma4)
+      # Override MODEL_REPO/MODEL_FILE when the official Gemma 4 GGUF lands on HF.
+      MODEL_REPO="${MODEL_REPO:-google/gemma-4-27b-it-GGUF}"
+      MODEL_FILE="${MODEL_FILE:-gemma-4-27b-it-Q4_K_M.gguf}"
+      TOK_REPO="${TOK_REPO:-google/gemma-4-27b-it}"
+      SCORE_TOOL="gemma4_gguf_score"
+      BENCH_TOOL="gemma4_gguf_bench"
+      ;;
+    *)
+      echo "!! unknown MODEL_PRESET: ${MODEL_PRESET} (want qwen or gemma4)" >&2
+      return 1
+      ;;
+  esac
+}
+apply_model_preset
 
 # compute capability -> CUDA arch (12.0 -> 120). RTX 5090 / PRO 6000 = 120, Spark/Thor = 121.
 detect_arch() {
@@ -17,8 +46,9 @@ detect_arch() {
 }
 
 ensure_sparkinfer() {  # $1 = arch
-  [ -x "$ROOT/build/runtime/qwen3_gguf_bench" ] && [ -x "$ROOT/build/runtime/qwen3_gguf_score" ] && return
-  echo ">> building sparkinfer (sm_$1) ..." >&2
+  apply_model_preset
+  [ -x "$ROOT/build/runtime/$BENCH_TOOL" ] && [ -x "$ROOT/build/runtime/$SCORE_TOOL" ] && return
+  echo ">> building sparkinfer (sm_$1, preset=${MODEL_PRESET}) ..." >&2
   cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_CUDA_ARCHITECTURES="$1" -DCMAKE_BUILD_TYPE=Release >/dev/null
   cmake --build "$ROOT/build" -j"$(nproc)" >/dev/null
 }
@@ -57,7 +87,9 @@ PREBUILT_DIR="$ROOT/.prebuilt/sparkinfer-bin"
 SI_BIN=""; SI_LD=""   # set by resolve_runner: binary dir + LD_LIBRARY_PATH
 
 try_prebuilt() {   # download+extract the release bundle; sets SI_BIN/SI_LD; returns 1 if unavailable
+  apply_model_preset
   [ "${NO_PREBUILT:-0}" = 1 ] && return 1
+  [ "$SCORE_TOOL" != "qwen3_gguf_score" ] && return 1   # v0.1.0 prebuilt is Qwen-only
   if [ ! -x "$PREBUILT_DIR/bin/qwen3_gguf_bench" ]; then
     command -v curl >/dev/null || return 1
     echo ">> fetching prebuilt $PREBUILT_TGZ ..." >&2
@@ -69,7 +101,8 @@ try_prebuilt() {   # download+extract the release bundle; sets SI_BIN/SI_LD; ret
 }
 
 resolve_runner() {   # $1=arch. Prefer an existing local build, else prebuilt, else build from source.
-  if [ -x "$ROOT/build/runtime/qwen3_gguf_bench" ]; then SI_BIN="$ROOT/build/runtime"; SI_LD=""; echo ">> using local build" >&2; return; fi
+  apply_model_preset
+  if [ -x "$ROOT/build/runtime/$BENCH_TOOL" ]; then SI_BIN="$ROOT/build/runtime"; SI_LD=""; echo ">> using local build ($MODEL_PRESET)" >&2; return; fi
   if try_prebuilt; then echo ">> using prebuilt binaries (will fall back to source build if incompatible)" >&2; return; fi
   ensure_sparkinfer "$1"; SI_BIN="$ROOT/build/runtime"; SI_LD=""
 }
