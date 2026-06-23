@@ -27,6 +27,9 @@ bench/scripts/bench.sh --download            # and --compare for the llama.cpp g
 
 # 3. accuracy — did it stay correct?  (this is the gate that blocks regressions)
 bench/scripts/accuracy.sh --download
+
+# 4. self-consistency — did the optimization change greedy output?  (tightest kernel gate)
+bench/scripts/self_consistency.sh --download
 ```
 
 **Accuracy gate.** Run `bench/scripts/accuracy.sh` (or `qwen3_gguf_score`) on the build

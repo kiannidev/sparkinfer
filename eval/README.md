@@ -76,7 +76,8 @@ still comes from the deterministic evaluator so validators converge.)
   to run — validate the vast-specific calls (offer query, `--image`, instance field names) on the
   first run and adjust if your account's defaults differ.
 - First eval on a fresh box builds llama.cpp (~10–15 min); it persists at `/workspace/.llamacpp`.
-- Correctness currently gates vs **llama.cpp**. For an optimization PR, also gate vs the **previous
-  frontier build** (score-vs-baseline: ~100% top-1 + KL≈0) — a small extension to `evaluate.sh`.
+- Correctness gates vs **llama.cpp** and, when `--baseline-ref` is passed to `evaluate.sh`, vs the
+  **previous frontier build** (score-vs-baseline: ≥99% argmax agreement + self-KL ≤ 0.01). Run
+  `bench/scripts/self_consistency.sh` locally before kernel swaps (e.g. MMVQ on/off).
 - Anti-gaming (an LLM/KDA agent reading the diff for benchmark-special-casing, weakened tolerances,
   harness edits) is a layer *on top* — it flags, it doesn't set the numeric label.

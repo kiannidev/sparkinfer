@@ -55,12 +55,21 @@ PPL llama.cpp         : 7.76   (top-k+floor; inflated — see accuracy results d
 
 ## Using the accuracy gate for optimization (no silent regressions)
 
-The same `score` tool gates an optimization against the **previous** sparkinfer build,
-not just llama.cpp — expect **~100% top-1 + KL ≈ 0**:
+Gate against the **previous** sparkinfer build, not just llama.cpp — expect **≥99% argmax
+agreement + self-KL ≈ 0**:
+
 ```bash
-build/runtime/qwen3_gguf_score model.gguf 20 <token-ids...>   # baseline, save output
-# ... apply your kernel optimization, rebuild ...
-build/runtime/qwen3_gguf_score model.gguf 20 <token-ids...>   # compare argmax + logprobs
+# MMVQ / kernel swap self-consistency (runs score twice, compares dumps)
+bench/scripts/self_consistency.sh --download
+
+# Manual score-vs-baseline (two builds)
+build/runtime/qwen3_gguf_score model.gguf 20 <token-ids...> > /tmp/baseline.txt
+# ... rebuild with your optimization ...
+build/runtime/qwen3_gguf_score model.gguf 20 <token-ids...> > /tmp/candidate.txt
+bench/scripts/self_consistency.sh /tmp/baseline.txt /tmp/candidate.txt
+
+# Eval loop (on a GPU box) — adds baseline gate to the PR bot path
+bench/scripts/evaluate.sh --ref <branch> --baseline-ref main --frontier 164 --ceiling 366
 ```
 
 ## Knobs (env vars)
