@@ -44,9 +44,10 @@ configs/
 ├── targets/
 │   ├── qwen35_q4km_rtx5090.yaml  # baseline 80 tok/s, target 130 tok/s
 │   ├── qwen35_q4km_rtx_spark.yaml
-│   └── gemma4_q4km_rtx5090.yaml  # 20.2 GB @ 256K ctx
-├── rtx5090.yaml                  # hardware spec: 32 GB, 1.79 TB/s, sm_100
-└── rtx_spark.yaml                # hardware spec: 128 GB, 273 GB/s, sm_100
+│   ├── gemma4_q4km_rtx5090.yaml  # 20.2 GB @ 256K ctx
+│   └── gemma4_q4km_rtx_spark.yaml
+├── rtx5090.yaml                  # hardware spec: 32 GB, 1.79 TB/s, sm_120
+└── rtx_spark.yaml                # hardware spec: 128 GB, 273 GB/s, sm_121
 
 scripts/
 └── run_all.sh                    # run all benchmarks and emit results/ JSON
