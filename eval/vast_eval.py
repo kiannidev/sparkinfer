@@ -24,6 +24,7 @@ from vastai import VastAI
 
 REPO    = os.environ.get("EVAL_REPO",  "https://github.com/gittensor-ai-lab/sparkinfer")
 IMAGE   = os.environ.get("EVAL_IMAGE", "nvidia/cuda:12.8.0-devel-ubuntu24.04")   # needs nvcc for sm_120
+TEMPLATE_HASH = os.environ.get("EVAL_TEMPLATE_HASH", "1ea6ef1d8cc4ad95e710c4c1daed378c")  # vast template (image+cfg); set "" to use EVAL_IMAGE
 SSH_KEY = os.path.expanduser(os.environ.get("SSH_KEY", "~/.ssh/id_ed25519"))
 LLAMACPP_DIR = os.environ.get("LLAMACPP_DIR", "/workspace/.llamacpp")            # persists across stop/start
 INSTANCE_FILE = os.path.expanduser(os.environ.get("VAST_INSTANCE_FILE", "~/.sparkinfer_vast_instance"))  # self-healed id
@@ -101,11 +102,14 @@ def provision(v, args):
         print(">> no matching offers"); return None
     off = offers[0]
     print(f">> creating instance on offer {off['id']} {off.get('gpu_name')} ${off.get('dph_total'):.3f}/hr")
-    # The SDK's create_instance has no ssh/direct kwargs (those are CLI flags). Use the CLI so we
-    # get the DIRECT SSH endpoint the rest of this script expects; --raw returns {success, new_contract}.
-    out = subprocess.run(["vastai", "create", "instance", str(off["id"]), "--image", args.image,
-                          "--disk", "120", "--ssh", "--direct", "--raw"],
-                         capture_output=True, text=True, timeout=120).stdout
+    # Create via the CLI: the SDK's create_instance has no ssh/direct kwargs (those are CLI flags),
+    # and --template_hash applies a preconfigured image+env. --raw returns {success, new_contract}.
+    cmd = ["vastai", "create", "instance", str(off["id"]), "--disk", "120", "--ssh", "--direct", "--raw"]
+    if TEMPLATE_HASH:
+        cmd += ["--template_hash", TEMPLATE_HASH]; print(f">> using template {TEMPLATE_HASH}")
+    else:
+        cmd += ["--image", args.image]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=120).stdout
     try: res = json.loads(out)
     except Exception: print(">> create failed:", out[:300]); return None
     if not res.get("success"): print(">> create failed:", str(res)[:300]); return None
