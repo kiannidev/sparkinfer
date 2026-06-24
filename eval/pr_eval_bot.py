@@ -153,22 +153,40 @@ def main():
                          "--json", "number,headRefName,headRefOid,title,isCrossRepository"]).stdout or "[]")
     if not prs:
         print("no open PRs"); return
+
+    # Collect PRs that actually need evaluation before starting the GPU instance.
+    pending = []
     for pr in prs:
         num, branch, oid = pr["number"], pr["headRefName"], pr["headRefOid"][:7]
-        # Fork PRs: headRefName is a branch on the contributor's fork, not on origin.
-        # Use pull/N/head so vast_eval.py can fetch it via GitHub's always-present ref.
         ref = f"pull/{num}/head" if pr.get("isCrossRepository") else branch
-        areas = areas_for_pr(args.repo, num)                       # deterministic, cheap, every poll
+        areas = areas_for_pr(args.repo, num)
         print(f"PR #{num} @ {oid}: areas={sorted(areas) or ['(none)']} ref={ref}")
         if not args.dry_run: apply_area_labels(args.repo, num, areas)
         if oid in evaluated_commits(args.repo, num):
             print(f"PR #{num} @ {oid}: already evaluated — skip eval"); continue
+        pending.append((pr, num, branch, oid, ref, areas))
+
+    if not pending:
+        print("done — no merges (manual)."); return
+
+    # Run all pending evals on the SAME instance: pass --keep so vast_eval.py never stops/destroys
+    # the box mid-queue. The bot stops the instance once after ALL PRs finish (or if the instance
+    # dies, subsequent PRs self-heal by provisioning a new one).
+    for i, (pr, num, branch, oid, ref, areas) in enumerate(pending):
         print(f"PR #{num} @ {oid}: evaluating '{ref}' ...")
         r = subprocess.run([sys.executable, os.path.join(HERE, "vast_eval.py"),
                             "--reuse", str(current_instance(args.instance)), "--ref", ref,
                             "--frontier", str(frontier), "--ceiling", str(args.ceiling),
-                            "--destroy-on-error"],
+                            "--keep"],          # keep instance alive — bot stops it after all PRs
                            cwd=ROOT, capture_output=True, text=True, timeout=14400)
+        # If vast_eval self-healed to a new instance, track the new id for the next PR.
+        for l in r.stdout.splitlines():
+            if l.startswith("NEW_INSTANCE_ID "):
+                try:
+                    new_id = int(l.split()[1])
+                    with open(INSTANCE_FILE, "w") as f: f.write(str(new_id))
+                    print(f"  (instance updated to {new_id})")
+                except Exception: pass
         line = next((l for l in r.stdout.splitlines() if l.startswith("RESULT_JSON")), None)
         if not line:
             log = (r.stdout + r.stderr)[-1500:]
@@ -187,7 +205,13 @@ def main():
             add_label(args.repo, num, f"eval:{label}")
         gh(["pr", "comment", str(num), "-R", args.repo, "--body", body])
         print(f"PR #{num}: posted {'eval:'+label if label else 'error'} — NOT merged.")
-        if res: update_dashboard(args.repo, pr, areas, res)   # live dashboard: prs[] + frontier
+        if res: update_dashboard(args.repo, pr, areas, res)
+
+    # Stop (not destroy) the instance after all PRs — disk/model cache persists for next run.
+    final_iid = current_instance(args.instance)
+    if final_iid:
+        print(f">> stopping instance {final_iid} — model cache persists for next run")
+        subprocess.run(["vastai", "stop", "instance", str(final_iid)], capture_output=True)
     print("done — no merges (manual).")
 
 if __name__ == "__main__":

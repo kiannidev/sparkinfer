@@ -20,8 +20,8 @@ ensure_sparkinfer() {  # $1 = arch
   [ -x "$ROOT/build/runtime/qwen3_gguf_bench" ] && [ -x "$ROOT/build/runtime/qwen3_gguf_score" ] && return
   echo ">> building sparkinfer (sm_$1) ..." >&2
   cmake -S "$ROOT" -B "$ROOT/build" -DCMAKE_CUDA_ARCHITECTURES="$1" -DCMAKE_BUILD_TYPE=Release >/dev/null
-  # Cap at 4 parallel jobs — cc1plus for sm_120 uses ~1-2 GB RAM each; uncapped nproc OOMs on GPU boxes.
-  cmake --build "$ROOT/build" -j4 >/dev/null
+  # Cap at 2 parallel jobs — cc1plus for sm_120 uses ~2-3 GB RAM each; -j4 OOMs on 64GB eval boxes.
+  cmake --build "$ROOT/build" -j2 >/dev/null
 }
 
 ensure_model() {
