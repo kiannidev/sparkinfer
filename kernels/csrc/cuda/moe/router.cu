@@ -93,6 +93,7 @@ void launch_moe_router(
     int* tokens_per_expert, int num_tokens, int num_experts, int top_k,
     int normalize, cudaStream_t stream
 ) {
+    if (num_tokens <= 0 || num_experts <= 0 || top_k <= 0 || top_k > num_experts) return;
     size_t smem = (size_t)num_experts * sizeof(float);
     moe_router_kernel<<<num_tokens, 32, smem, stream>>>(
         logits, expert_ids, expert_weights, tokens_per_expert,

@@ -64,7 +64,7 @@ Kernel implementation lives in [sparkinfer-kernels](https://github.com/gittensor
 ## Build
 
 ```bash
-cmake -B build -DCMAKE_CUDA_ARCHITECTURES="100"
+cmake -B build -DCMAKE_CUDA_ARCHITECTURES="120"
 cmake --build build -j$(nproc)
 ```
 
