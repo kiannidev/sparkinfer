@@ -6,15 +6,24 @@
 //   out[i]      = x[i]*cos - x[i+half]*sin
 //   out[i+half] = x[i+half]*cos + x[i]*sin     for i in [0, half)
 //
+// inv_freq is uploaded once per launch into __constant__ (no per-thread __powf).
 // Portable CUDA — runs on sm_89 .. sm_120 (RTX 5090).
 
 #include <cuda_bf16.h>
 #ifndef SPARKINFER_NVRTC_DEVICE_ONLY
 #include <cuda_runtime.h>
+#include <cmath>
 #endif
 
 namespace sparkinfer {
 namespace kernels {
+
+#ifndef SPARKINFER_NVRTC_DEVICE_ONLY
+namespace {
+constexpr int ROPE_MAX_HALF = 256;   // head_dim <= 512 (Gemma4 global)
+__constant__ float c_rope_inv_freq[ROPE_MAX_HALF];
+} // namespace
+#endif
 
 // grid = (n_tokens, n_heads); blockDim = head_dim/2 threads (one per rotated pair).
 __global__ void rope_kernel(
@@ -28,8 +37,13 @@ __global__ void rope_kernel(
     const int half = head_dim / 2;
     if (i >= half) return;
 
-    const float p    = (float)positions[tok];
+    const float p = (float)__ldg(&positions[tok]);
+#ifndef SPARKINFER_NVRTC_DEVICE_ONLY
+    (void)theta;
+    const float freq = c_rope_inv_freq[i];
+#else
     const float freq = __powf(theta, -2.f * (float)i / (float)head_dim);
+#endif
     const float ang  = p * freq;
     const float c = __cosf(ang), s = __sinf(ang);
 
@@ -47,10 +61,18 @@ void launch_rope(void* q, void* k, const int* positions,
                  int n_tokens, int n_q_heads, int n_kv_heads, int head_dim,
                  float theta, cudaStream_t stream) {
     const int half = head_dim / 2;
+    float inv[ROPE_MAX_HALF];
+    for (int i = 0; i < half; i++)
+        inv[i] = powf(theta, -2.f * (float)i / (float)head_dim);
+    cudaMemcpyToSymbol(c_rope_inv_freq, inv, (size_t)half * sizeof(float), 0,
+                       cudaMemcpyHostToDevice);
+
     dim3 gq(n_tokens, n_q_heads);
-    rope_kernel<<<gq, half, 0, stream>>>(reinterpret_cast<__nv_bfloat16*>(q), positions, n_q_heads, head_dim, theta);
+    rope_kernel<<<gq, half, 0, stream>>>(reinterpret_cast<__nv_bfloat16*>(q), positions,
+                                         n_q_heads, head_dim, theta);
     dim3 gk(n_tokens, n_kv_heads);
-    rope_kernel<<<gk, half, 0, stream>>>(reinterpret_cast<__nv_bfloat16*>(k), positions, n_kv_heads, head_dim, theta);
+    rope_kernel<<<gk, half, 0, stream>>>(reinterpret_cast<__nv_bfloat16*>(k), positions,
+                                         n_kv_heads, head_dim, theta);
 }
 #endif
 
