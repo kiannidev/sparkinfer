@@ -214,8 +214,7 @@ int Qwen35Model::forward_token(int token_id, int position) {
 
         if (w.gate_q) {   // GGUF fused: route, then dequant-on-read only the top_k experts
             kernels::launch_gemv_f32(s.hn, w.router_w, s.mf_logits, c.n_experts, c.hidden, st);  // router_w native [E,H]
-            cu(cudaMemsetAsync(s.mf_counts, 0, c.n_experts * sizeof(int), st), "mf counts");
-            kernels::launch_moe_router(s.mf_logits, s.mf_ids, s.mf_weights, s.mf_counts,
+            kernels::launch_moe_router(s.mf_logits, s.mf_ids, s.mf_weights, nullptr,
                                        1, c.n_experts, c.top_k, 1, st);
             kernels::launch_moe_expert_ffn_q4k(s.hn, w.gate_q, w.up_q, w.down_q,
                                                w.gate_qtype, w.up_qtype, w.down_qtype,

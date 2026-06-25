@@ -15,7 +15,7 @@
 namespace sparkinfer {
 namespace kernels {
 
-static constexpr int GEMV_WPB = 8;   // warps (output rows) per block
+static constexpr int GEMV_WPB = 16;   // warps (output rows) per block — tuned for 5090 decode
 
 __device__ __forceinline__ void gemv_write(float* p, float v) { *p = v; }
 __device__ __forceinline__ void gemv_write(__nv_bfloat16* p, float v) { *p = __float2bfloat16(v); }
