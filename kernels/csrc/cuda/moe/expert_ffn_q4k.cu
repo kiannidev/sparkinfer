@@ -24,7 +24,7 @@
 namespace sparkinfer {
 namespace kernels {
 
-static constexpr int WPB = 20;   // warps per block (tuned for 5090 occupancy at bs=1)
+static constexpr int WPB = 8;   // warps per block
 
 // Programmatic Dependent Launch (PDL): overlap a kernel's grid spin-up with its
 // predecessor's tail to hide bs=1 decode launch latency (the ncu-confirmed bottleneck).
@@ -303,7 +303,7 @@ void launch_moe_expert_ffn_q4k(
 
     dim3 gu(num_tokens * top_k, (ffn + WPB - 1) / WPB);
     if (mmvq && gate_type == 12 && up_type == 12) {   // 12 = ggml Q4_K
-        size_t sm = 2 * (size_t)(hidden >> 5) * sizeof(float) + (size_t)hidden;  // s_xd+s_xs+s_xq8
+        size_t sm = 2 * (size_t)(hidden >> 5) * sizeof(float) + (size_t)hidden;
         gate_up_q4k_mmvq_kernel<<<gu, WPB * 32, sm, stream>>>(
             reinterpret_cast<const __nv_bfloat16*>(input),
             reinterpret_cast<const unsigned char*>(gate_q),
