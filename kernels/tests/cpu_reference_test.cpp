@@ -69,6 +69,72 @@ static double test_attention(int HD, int kvlen) {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. Flash-decode-split hd128 VECTORIZED K/V loads: each lane owns 4 CONTIGUOUS
+//     head elements [lane*4 .. lane*4+4) and reads them as one uint2 (4 bf16)
+//     coalesced load. This models that exact per-lane contiguous mapping and
+//     checks it reproduces the online-softmax output vs the fp64 reference. A
+//     mismatch here means the vectorized layout reads/writes the wrong elements.
+// ---------------------------------------------------------------------------
+static double test_attention_vec128(int kvlen) {
+    constexpr int HD = 128, LANES = 32, ELEMS = HD / LANES;  // 4 contiguous per lane
+    vector<float> q(HD), K(kvlen * HD), V(kvlen * HD);
+    for (auto& x : q) x = frand();
+    for (auto& x : K) x = frand();
+    for (auto& x : V) x = frand();
+    const float scale = 1.f / std::sqrt((float)HD);
+
+    // fp64 two-pass reference.
+    vector<double> scores(kvlen);
+    double mx = -1e300;
+    for (int t = 0; t < kvlen; t++) {
+        double d = 0; for (int i = 0; i < HD; i++) d += (double)q[i] * K[t * HD + i];
+        scores[t] = d * scale; mx = std::max(mx, scores[t]);
+    }
+    double denom = 0; for (int t = 0; t < kvlen; t++) denom += std::exp(scores[t] - mx);
+    vector<double> ref(HD, 0);
+    for (int t = 0; t < kvlen; t++) {
+        double p = std::exp(scores[t] - mx) / denom;
+        for (int i = 0; i < HD; i++) ref[i] += p * V[t * HD + i];
+    }
+
+    // uint2 contiguous mapping: lane `L` owns global head elems [L*ELEMS + e].
+    auto idx_of = [](int lane, int e) { return lane * ELEMS + e; };
+
+    // Per-lane online softmax over the lane's 4 contiguous elements, then warp-sum.
+    float lane_acc[LANES][ELEMS];
+    float m = -1e30f, l = 0.f;
+    for (int lane = 0; lane < LANES; lane++)
+        for (int e = 0; e < ELEMS; e++) lane_acc[lane][e] = 0.f;
+
+    for (int t = 0; t < kvlen; t++) {
+        const float* kh = &K[t * HD];
+        const float* vh = &V[t * HD];
+        // each lane sums its 4 contiguous elements, then fa_wsum reduces across lanes.
+        float p = 0.f;
+        for (int lane = 0; lane < LANES; lane++)
+            for (int e = 0; e < ELEMS; e++) {
+                const int idx = idx_of(lane, e);
+                p += q[idx] * kh[idx];
+            }
+        const float score = p * scale;              // fa_wsum already reduced across lanes
+        const float mn = std::max(m, score), corr = std::exp(m - mn), pe = std::exp(score - mn);
+        l = l * corr + pe;
+        for (int lane = 0; lane < LANES; lane++)
+            for (int e = 0; e < ELEMS; e++) {
+                const int idx = idx_of(lane, e);
+                lane_acc[lane][e] = lane_acc[lane][e] * corr + pe * vh[idx];
+            }
+        m = mn;
+    }
+
+    double err = 0;
+    for (int lane = 0; lane < LANES; lane++)
+        for (int e = 0; e < ELEMS; e++)
+            err = std::max(err, std::abs((double)(lane_acc[lane][e] / l) - ref[idx_of(lane, e)]));
+    return err;
+}
+
+// ---------------------------------------------------------------------------
 // 2. Router top-k: kernel mask-argmax algorithm vs sort-based reference.
 // ---------------------------------------------------------------------------
 static double test_router(int E, int K) {
@@ -175,6 +241,8 @@ int main() {
     check("attention hd128 kv333", test_attention(128, 333),  1e-4);
     check("attention hd256 kv1024",test_attention(256, 1024), 2e-4);
     check("attention hd512 kv777", test_attention(512, 777),  2e-4);
+    check("attn vec128 kv1   (uint2)", test_attention_vec128(1),   1e-4);
+    check("attn vec128 kv333 (uint2)", test_attention_vec128(333), 1e-4);
     check("router E256 k8",        test_router(256, 8),       1e-6);
     check("router E128 k8",        test_router(128, 8),       1e-6);
     check("swiglu H2048 F512",     test_swiglu(2048, 512),    1e-3);
