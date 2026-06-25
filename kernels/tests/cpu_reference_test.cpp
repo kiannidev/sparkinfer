@@ -169,6 +169,21 @@ static double test_rmsnorm(int cols) {
     return err;
 }
 
+// ---------------------------------------------------------------------------
+// 6. RoPE inv_freq table: host-precomputed theta^(-2i/head_dim) must match the
+//    per-thread __powf the baseline kernel uses (the PR #45 constant table).
+// ---------------------------------------------------------------------------
+static double test_rope_inv_freq(int head_dim, float theta) {
+    const int half = head_dim / 2;
+    double err = 0;
+    for (int i = 0; i < half; i++) {
+        const double ref = std::pow((double)theta, -2.0 * i / head_dim);
+        const float tab = (float)std::pow((double)theta, -2.0 * i / head_dim);
+        err = std::max(err, std::abs((double)tab - ref));
+    }
+    return err;
+}
+
 int main() {
     printf("sparkinfer kernel algorithm correctness (CPU reference)\n");
     check("attention hd128 kv1",   test_attention(128, 1),    1e-4);
@@ -182,6 +197,8 @@ int main() {
     check("gemm 64x96x128",        test_gemm(64, 96, 128),    1e-3);
     check("gemm 17x33x49",         test_gemm(17, 33, 49),     1e-3);
     check("rmsnorm cols2048",      test_rmsnorm(2048),        1e-4);
+    check("rope inv_freq hd128",   test_rope_inv_freq(128, 1e7f), 1e-6);
+    check("rope inv_freq hd256",   test_rope_inv_freq(256, 1e4f), 1e-6);
     printf("%s (%d failures)\n", g_fail ? "FAILED" : "ALL PASSED", g_fail);
     return g_fail ? 1 : 0;
 }

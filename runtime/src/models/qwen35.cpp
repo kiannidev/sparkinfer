@@ -111,6 +111,7 @@ Qwen35Model::Qwen35Model(const Qwen35Config& cfg, KVCacheManager* kv, moe::MoEEn
     p_->fa_m   = p_->alloc<float>(fa_n);
     p_->fa_l   = p_->alloc<float>(fa_n);
     p_->fa_acc = p_->alloc<float>(fa_n * cfg.head_dim);
+    kernels::rope_upload_inv_freq(cfg.rope_theta, cfg.head_dim, p_->stream);
 }
 
 Qwen35Model::~Qwen35Model() {

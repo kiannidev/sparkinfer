@@ -22,6 +22,10 @@ void launch_flash_decode(
 // Rotary position embedding (RoPE, HF rotate-half) applied in-place to Q and K
 // after projection. positions: [n_tokens] (int32, device).
 //   q: [n_tokens, n_q_heads, head_dim]   k: [n_tokens, n_kv_heads, head_dim]
+//
+// Call rope_upload_inv_freq(theta, head_dim) once at model init (before CUDA-graph
+// capture). launch_rope is graph-capturable and does no host-side symbol upload.
+void rope_upload_inv_freq(float theta, int head_dim, cudaStream_t stream = nullptr);
 void launch_rope(
     void* q, void* k, const int* positions,
     int n_tokens, int n_q_heads, int n_kv_heads, int head_dim,

@@ -6,7 +6,8 @@
 //   out[i]      = x[i]*cos - x[i+half]*sin
 //   out[i+half] = x[i+half]*cos + x[i]*sin     for i in [0, half)
 //
-// inv_freq is uploaded once per launch into __constant__ (no per-thread __powf).
+// inv_freq lives in __constant__ (uploaded once via rope_upload_inv_freq before
+// the first launch_rope). launch_rope is graph-capturable — no host memcpy.
 // Portable CUDA — runs on sm_89 .. sm_120 (RTX 5090).
 
 #include <cuda_bf16.h>
@@ -57,16 +58,23 @@ __global__ void rope_kernel(
 #ifndef SPARKINFER_NVRTC_DEVICE_ONLY
 #include "sparkinfer/kernels/attention.h"
 
-void launch_rope(void* q, void* k, const int* positions,
-                 int n_tokens, int n_q_heads, int n_kv_heads, int head_dim,
-                 float theta, cudaStream_t stream) {
+void rope_upload_inv_freq(float theta, int head_dim, cudaStream_t stream) {
     const int half = head_dim / 2;
     float inv[ROPE_MAX_HALF];
     for (int i = 0; i < half; i++)
         inv[i] = powf(theta, -2.f * (float)i / (float)head_dim);
-    cudaMemcpyToSymbol(c_rope_inv_freq, inv, (size_t)half * sizeof(float), 0,
-                       cudaMemcpyHostToDevice);
+    // Host-side upload once at model init (outside CUDA-graph capture). Not issued
+    // from launch_rope so the decode graph stays capturable.
+    cudaMemcpyToSymbolAsync(c_rope_inv_freq, inv, (size_t)half * sizeof(float), 0,
+                            cudaMemcpyHostToDevice, stream);
+    cudaStreamSynchronize(stream);
+}
 
+void launch_rope(void* q, void* k, const int* positions,
+                 int n_tokens, int n_q_heads, int n_kv_heads, int head_dim,
+                 float theta, cudaStream_t stream) {
+    (void)theta;
+    const int half = head_dim / 2;
     dim3 gq(n_tokens, n_q_heads);
     rope_kernel<<<gq, half, 0, stream>>>(reinterpret_cast<__nv_bfloat16*>(q), positions,
                                          n_q_heads, head_dim, theta);
