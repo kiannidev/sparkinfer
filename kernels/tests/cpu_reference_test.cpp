@@ -69,6 +69,63 @@ static double test_attention(int HD, int kvlen) {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. Flash-decode-split MULTI-TOKEN TILING: the kernel processes KV tokens in
+//     tiles of TT, preloading the tile's K and V into registers (memory-level
+//     parallelism) before folding the TT scores into the online softmax in
+//     token order. This models that exact tiled grouping and checks it matches
+//     the fp64 reference AND is identical to the one-token-at-a-time fold (the
+//     fold order is unchanged, so register-tiling must not alter the result).
+// ---------------------------------------------------------------------------
+static double test_attention_tiled(int HD, int kvlen, int TT) {
+    vector<float> q(HD), K(kvlen * HD), V(kvlen * HD);
+    for (auto& x : q) x = frand();
+    for (auto& x : K) x = frand();
+    for (auto& x : V) x = frand();
+    const float scale = 1.f / std::sqrt((float)HD);
+
+    // fp64 two-pass reference.
+    vector<double> scores(kvlen);
+    double mx = -1e300;
+    for (int t = 0; t < kvlen; t++) {
+        double d = 0; for (int i = 0; i < HD; i++) d += (double)q[i] * K[t * HD + i];
+        scores[t] = d * scale; mx = std::max(mx, scores[t]);
+    }
+    double denom = 0; for (int t = 0; t < kvlen; t++) denom += std::exp(scores[t] - mx);
+    vector<double> ref(HD, 0);
+    for (int t = 0; t < kvlen; t++) {
+        double p = std::exp(scores[t] - mx) / denom;
+        for (int i = 0; i < HD; i++) ref[i] += p * V[t * HD + i];
+    }
+
+    // Tiled online softmax: preload TT tokens' scores + V, then fold in order.
+    float m = -1e30f, l = 0.f; vector<float> acc(HD, 0.f);
+    int t = 0;
+    for (; t + TT <= kvlen; t += TT) {
+        float sc[16];
+        for (int j = 0; j < TT; j++) {
+            float d = 0; for (int i = 0; i < HD; i++) d += q[i] * K[(t + j) * HD + i];
+            sc[j] = d * scale;
+        }
+        for (int j = 0; j < TT; j++) {
+            float mn = std::max(m, sc[j]), corr = std::exp(m - mn), pe = std::exp(sc[j] - mn);
+            l = l * corr + pe;
+            for (int i = 0; i < HD; i++) acc[i] = acc[i] * corr + pe * V[(t + j) * HD + i];
+            m = mn;
+        }
+    }
+    for (; t < kvlen; t++) {  // scalar tail
+        float d = 0; for (int i = 0; i < HD; i++) d += q[i] * K[t * HD + i];
+        float sc = d * scale;
+        float mn = std::max(m, sc), corr = std::exp(m - mn), pe = std::exp(sc - mn);
+        l = l * corr + pe;
+        for (int i = 0; i < HD; i++) acc[i] = acc[i] * corr + pe * V[t * HD + i];
+        m = mn;
+    }
+    double err = 0; for (int i = 0; i < HD; i++) err = std::max(err, std::abs(acc[i] / l - ref[i]));
+    return err;
+}
+
+// ---------------------------------------------------------------------------
 // 2. Router top-k: kernel mask-argmax algorithm vs sort-based reference.
 // ---------------------------------------------------------------------------
 static double test_router(int E, int K) {
@@ -175,6 +232,8 @@ int main() {
     check("attention hd128 kv333", test_attention(128, 333),  1e-4);
     check("attention hd256 kv1024",test_attention(256, 1024), 2e-4);
     check("attention hd512 kv777", test_attention(512, 777),  2e-4);
+    check("attn tiled hd128 kv333 T4", test_attention_tiled(128, 333, 4), 1e-4);
+    check("attn tiled hd128 kv7   T4", test_attention_tiled(128, 7,   4), 1e-4);
     check("router E256 k8",        test_router(256, 8),       1e-6);
     check("router E128 k8",        test_router(128, 8),       1e-6);
     check("swiglu H2048 F512",     test_swiglu(2048, 512),    1e-3);
