@@ -83,6 +83,17 @@ window.SPARKINFER = {
   ],
   "prs": [
     {
+      "num": 60,
+      "title": "perf(runtime): keep lm_head native-quantized, decode on-read (cut the largest decode read)",
+      "areas": [
+        "runtime"
+      ],
+      "label": "none",
+      "tps": 256.7,
+      "delta_pct": null,
+      "url": "https://github.com/gittensor-ai-lab/sparkinfer/pull/60"
+    },
+    {
       "num": 59,
       "title": "Adopt llama.cpp Q4_K mul_mat_vec_q for attention GEMVs (+9.3% decode, top-1 0.99)",
       "areas": [
