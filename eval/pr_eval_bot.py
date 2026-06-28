@@ -649,6 +649,17 @@ def main():
               f"aborting; no PRs graded.\n{log}"); return
     run_baseline = bres["tps"]
     print(f">> same-box baseline: origin/main = {run_baseline} tok/s on this box")
+    # Sanity guard: origin/main IS the merged frontier code, so on a healthy box it should measure
+    # within ~10% of the known frontier. A baseline well below that means the box is cold/throttling
+    # or degraded — grading PRs against it inflates every delta (the cold-clock artifact that once
+    # mislabeled minor PRs as XL above the ceiling). Abort rather than post bogus labels.
+    SANITY_FRAC = float(os.environ.get("SPARKINFER_BASELINE_SANITY", "0.90"))
+    known_frontier = float(args.frontier or 0)
+    if known_frontier > 0 and run_baseline < SANITY_FRAC * known_frontier:
+        print(f">> baseline {run_baseline} < {SANITY_FRAC:.0%} of known frontier {known_frontier} "
+              f"(= {SANITY_FRAC*known_frontier:.1f}) — box underperforming (cold/throttling/degraded). "
+              f"Aborting; NO PRs graded. Re-run on a warm, stable box.")
+        return
 
     # Run all pending evals on the SAME instance: pass --keep so vast_eval.py never stops/destroys
     # the box mid-queue. The bot stops the instance once after ALL PRs finish (or if the instance
