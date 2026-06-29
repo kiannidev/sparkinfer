@@ -4,13 +4,13 @@ window.SPARKINFER = {
   "status": {
     "gpu": "RTX 5090 · sm_120 · CUDA 13",
     "model": "Qwen3-30B-A3B · Q4_K_M",
-    "frontier_tps": 454.41,
+    "frontier_tps": 453.7,
     "ref_name": "llama.cpp",
-    "ref_tps": 366,
+    "ref_tps": 365.85,
     "vram_gb": 21.4,
     "token_match": 0.97,
     "kl": 0.1417,
-    "ref_note": "128-tok decode, same RTX 5090"
+    "ref_note": "128-tok decode, same RTX 5090 (warm, interleaved head-to-head)"
   },
   "passes_gpu": "RTX 5090",
   "passes": [
@@ -707,13 +707,13 @@ window.SPARKINFER = {
     },
     {
       "name": "run Q/K/V projections on con",
-      "tps": 443.38,
+      "tps": 435.41,
       "pr": 89,
       "date": "2026-06-29"
     },
     {
       "name": "single-pass MoE top-k + fuse",
-      "tps": 454.41,
+      "tps": 453.7,
       "pr": 86,
       "date": "2026-06-29"
     }
