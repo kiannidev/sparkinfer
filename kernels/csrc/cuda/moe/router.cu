@@ -17,6 +17,20 @@
 namespace sparkinfer {
 namespace kernels {
 
+// PDL helpers (shared env SPARKINFER_MMVQ_PDL with the int8 MMVQ MoE chain).
+__device__ __forceinline__ void si_pdl_lc() {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900) && !defined(SPARKINFER_NVRTC_DEVICE_ONLY)
+    cudaTriggerProgrammaticLaunchCompletion();
+#endif
+}
+#ifndef SPARKINFER_NVRTC_DEVICE_ONLY
+static inline int router_mmvq_pdl_enabled() {
+    static int v = -1;
+    if (v < 0) { const char* e = getenv("SPARKINFER_MMVQ_PDL"); v = (e && e[0] == '0') ? 0 : 1; }
+    return v;
+}
+#endif
+
 // Warp arg-max: returns the max value across the warp; *idx is set on every lane
 // to the index that owns it (ties resolved to the lowest index).
 __device__ __forceinline__ float warp_argmax(float val, int& idx) {
@@ -140,6 +154,7 @@ __global__ void moe_router_kernel2(
             if (v > my || (v == my && f < e)) rank++; }
         if (rank < top_k) atomicAdd(&tokens_per_expert[e], 1);
     }
+    si_pdl_lc();   // PDL: let gate_up_mmvq2 begin its grid spin-up
 }
 
 #ifndef SPARKINFER_NVRTC_DEVICE_ONLY
@@ -156,9 +171,22 @@ void launch_moe_router(
     if (r2 < 0) { const char* e = getenv("SPARKINFER_ROUTER2"); r2 = (e && e[0] == '0') ? 0 : 1; }
     if (r2 && top_k <= 16 && num_experts <= 1024) {
         const int bd = ((num_experts + 31) / 32) * 32;     // round up to a warp multiple
-        moe_router_kernel2<<<num_tokens, bd, smem, stream>>>(
-            logits, expert_ids, expert_weights, tokens_per_expert,
-            num_tokens, num_experts, top_k, normalize);
+        if (router_mmvq_pdl_enabled()) {
+            cudaLaunchConfig_t cfg = {};
+            cfg.gridDim = dim3(num_tokens); cfg.blockDim = dim3(bd);
+            cfg.dynamicSmemBytes = smem; cfg.stream = stream;
+            static thread_local cudaLaunchAttribute attr;
+            attr.id = cudaLaunchAttributeProgrammaticStreamSerialization;
+            attr.val.programmaticStreamSerializationAllowed = 1;
+            cfg.attrs = &attr; cfg.numAttrs = 1;
+            cudaLaunchKernelEx(&cfg, moe_router_kernel2,
+                logits, expert_ids, expert_weights, tokens_per_expert,
+                num_tokens, num_experts, top_k, normalize);
+        } else {
+            moe_router_kernel2<<<num_tokens, bd, smem, stream>>>(
+                logits, expert_ids, expert_weights, tokens_per_expert,
+                num_tokens, num_experts, top_k, normalize);
+        }
         return;
     }
     moe_router_kernel<<<num_tokens, 32, smem, stream>>>(
